@@ -2,33 +2,45 @@
   import { getActualORPIndex } from '../rsvp-utils.js';
 
   export let word = '';
+  export let wordGroup = []; 
+  export let highlightIndex = 0; 
   export let opacity = 1;
   export let fadeDuration = 150;
   export let fadeEnabled = true;
+  export let multiWordEnabled = false;
 
-  $: orpIndex = getActualORPIndex(word);
-  $: beforeOrp = word ? word.slice(0, orpIndex) : '';
-  $: orpLetter = word ? (word[orpIndex] || '') : '';
-  $: afterOrp = word ? word.slice(orpIndex + 1) : '';
+  $: useMultiMode = multiWordEnabled && wordGroup.length > 0;
+  $: orpIdx = !useMultiMode && word ? getActualORPIndex(word) : -1;
+  $: wordPrefix = !useMultiMode && word ? word.slice(0, orpIdx) : '';
+  $: focusChar = !useMultiMode && word ? (word[orpIdx] || '') : '';
+  $: wordSuffix = !useMultiMode && word ? word.slice(orpIdx + 1) : '';
 </script>
 
 <div class="rsvp-display">
-  <div class="focus-marker">
-    <div class="marker-line top"></div>
-    <div class="marker-line bottom"></div>
-  </div>
+  {#if !useMultiMode}
+    <div class="focus-marker">
+      <div class="marker-line top"></div>
+      <div class="marker-line bottom"></div>
+    </div>
+  {/if}
 
   <div
     class="word-container"
+    class:multi-mode={useMultiMode}
     style="opacity: {opacity}; transition: opacity {fadeEnabled ? fadeDuration : 0}ms ease-in-out;"
   >
-    {#if word}
-      <!-- ORP letter is absolutely positioned at center -->
-      <span class="orp">{orpLetter}</span>
-      <!-- Before text positioned to the left of center -->
-      <span class="before-orp">{beforeOrp}</span>
-      <!-- After text positioned to the right of center -->
-      <span class="after-orp">{afterOrp}</span>
+    {#if useMultiMode}
+      <div class="word-group">
+        {#each wordGroup as w, idx}
+          <span class="group-word" class:highlight={idx === highlightIndex}>
+            {w}
+          </span>
+        {/each}
+      </div>
+    {:else if word}
+      <span class="orp">{focusChar}</span>
+      <span class="before-orp">{wordPrefix}</span>
+      <span class="after-orp">{wordSuffix}</span>
     {:else}
       <span class="placeholder">Ready</span>
     {/if}
@@ -93,6 +105,29 @@
     justify-content: center;
   }
 
+  .word-container.multi-mode {
+    font-size: clamp(2rem, 6vw, 4rem);
+  }
+
+  .word-group {
+    display: flex;
+    gap: 0.6em;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .group-word {
+    color: #777;
+    transition: color 0.15s, transform 0.15s;
+  }
+
+  .group-word.highlight {
+    color: #ff4444;
+    font-weight: 700;
+    transform: scale(1.05);
+    text-shadow: 0 0 25px rgba(255, 68, 68, 0.5);
+  }
+
   .orp {
     position: absolute;
     left: 50%;
@@ -133,6 +168,14 @@
 
     .marker-line {
       height: 30px;
+    }
+
+    .word-container.multi-mode {
+      font-size: clamp(1.5rem, 5vw, 3rem);
+    }
+
+    .word-group {
+      gap: 0.4em;
     }
   }
 </style>
