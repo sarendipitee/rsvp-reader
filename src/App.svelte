@@ -46,6 +46,7 @@
   let pauseDuration = 500;
   let pauseOnPunctuation = true;
   let punctuationPauseMultiplier = 2;
+  let wordLengthWPMMultiplier = 5;
 
   // Animation
   let wordOpacity = 1;
@@ -65,7 +66,7 @@
   }
 
   function getWordDelay(word) {
-    return getWordDelayUtil(word, wordsPerMinute, pauseOnPunctuation, punctuationPauseMultiplier);
+    return getWordDelayUtil(word, wordsPerMinute, pauseOnPunctuation, punctuationPauseMultiplier, wordLengthWPMMultiplier);
   }
 
   function showNextWord() {
@@ -188,6 +189,7 @@
         fadeDuration,
         pauseOnPunctuation,
         punctuationPauseMultiplier,
+        wordLengthWPMMultiplier,
         pauseAfterWords,
         pauseDuration,
         frameWordCount
@@ -210,6 +212,7 @@
       fadeDuration = session.settings.fadeDuration ?? fadeDuration;
       pauseOnPunctuation = session.settings.pauseOnPunctuation ?? pauseOnPunctuation;
       punctuationPauseMultiplier = session.settings.punctuationPauseMultiplier ?? punctuationPauseMultiplier;
+      wordLengthWPMMultiplier = session.settings.wordLengthWPMMultiplier ?? wordLengthWPMMultiplier;
       pauseAfterWords = session.settings.pauseAfterWords ?? pauseAfterWords;
       pauseDuration = session.settings.pauseDuration ?? pauseDuration;
       frameWordCount = session.settings.frameWordCount ?? frameWordCount;
@@ -418,6 +421,7 @@
         bind:fadeDuration
         bind:pauseOnPunctuation
         bind:punctuationPauseMultiplier
+        bind:wordLengthWPMMultiplier
         bind:pauseAfterWords
         bind:pauseDuration
         bind:frameWordCount

@@ -9,6 +9,7 @@
   export let pauseAfterWords = 0;
   export let pauseDuration = 500;
   export let frameWordCount = 1;
+  export let wordLengthWPMMultiplier = 5;
 
   const dispatch = createEventDispatcher();
 
@@ -63,6 +64,15 @@
           </button>
         {/each}
       </div>
+    </div>
+
+    <div class="control-row">
+      <div class="control-header">
+        <span>Lower WPM for longer words</span>
+        <span class="control-value">{wordLengthWPMMultiplier}%</span>
+      </div>
+      <input type="range" min="0" max="50" step="1" bind:value={wordLengthWPMMultiplier} class="slider">
+      <p class="hint-text">How many percentage points each letter increases pause duration</p>
     </div>
   </section>
 
