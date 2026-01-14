@@ -82,6 +82,58 @@ describe('getORPIndex', () => {
     expect(getORPIndex(null)).toBe(0)
     expect(getORPIndex(undefined)).toBe(0)
   })
+
+  // Unicode / International language support
+  it('should handle French accented characters', () => {
+    expect(getORPIndex('café')).toBe(1)      // 4 letters
+    expect(getORPIndex('résumé')).toBe(2)    // 6 letters
+    expect(getORPIndex('français')).toBe(2)  // 8 letters
+  })
+
+  it('should handle Spanish characters', () => {
+    expect(getORPIndex('niño')).toBe(1)      // 4 letters
+    expect(getORPIndex('mañana')).toBe(2)    // 6 letters
+    expect(getORPIndex('español')).toBe(2)   // 7 letters
+  })
+
+  it('should handle German characters', () => {
+    expect(getORPIndex('über')).toBe(1)      // 4 letters
+    expect(getORPIndex('größe')).toBe(1)     // 5 letters
+    expect(getORPIndex('Mädchen')).toBe(2)   // 7 letters
+  })
+
+  it('should handle Cyrillic (Russian)', () => {
+    expect(getORPIndex('мир')).toBe(0)       // 3 letters
+    expect(getORPIndex('слово')).toBe(1)     // 5 letters
+    expect(getORPIndex('привет')).toBe(2)    // 6 letters
+  })
+
+  it('should handle Greek', () => {
+    expect(getORPIndex('και')).toBe(0)       // 3 letters
+    expect(getORPIndex('λόγος')).toBe(1)     // 5 letters
+    expect(getORPIndex('ελληνικά')).toBe(2)  // 8 letters
+  })
+
+  it('should handle Chinese characters', () => {
+    expect(getORPIndex('中')).toBe(0)        // 1 character
+    expect(getORPIndex('中国')).toBe(0)      // 2 characters
+    expect(getORPIndex('你好世界')).toBe(1)   // 4 characters
+  })
+
+  it('should handle Japanese', () => {
+    expect(getORPIndex('日本')).toBe(0)      // 2 characters
+    expect(getORPIndex('こんにちは')).toBe(1) // 5 characters
+  })
+
+  it('should handle Arabic', () => {
+    expect(getORPIndex('مرحبا')).toBe(1)     // 5 letters
+    expect(getORPIndex('العربية')).toBe(2)   // 7 letters
+  })
+
+  it('should handle Hebrew', () => {
+    expect(getORPIndex('שלום')).toBe(1)      // 4 letters
+    expect(getORPIndex('עברית')).toBe(1)     // 5 letters
+  })
 })
 
 describe('getActualORPIndex', () => {
@@ -102,6 +154,29 @@ describe('getActualORPIndex', () => {
   it('should handle empty input', () => {
     expect(getActualORPIndex('')).toBe(0)
     expect(getActualORPIndex(null)).toBe(0)
+  })
+
+  // Unicode / International language support
+  it('should handle accented characters correctly', () => {
+    expect(getActualORPIndex('café')).toBe(1)      // 'a' is ORP
+    expect(getActualORPIndex('résumé')).toBe(2)    // 's' is ORP
+    expect(getActualORPIndex('über')).toBe(1)      // 'b' is ORP
+  })
+
+  it('should skip punctuation with Unicode words', () => {
+    expect(getActualORPIndex('"café"')).toBe(2)    // Skip " to get to 'a'
+    expect(getActualORPIndex('¡hola!')).toBe(2)    // Skip ¡ to get to 'o'
+    expect(getActualORPIndex('«привет»')).toBe(3) // Skip « to get to 'и'
+  })
+
+  it('should handle Cyrillic words', () => {
+    expect(getActualORPIndex('привет')).toBe(2)    // 'и' is ORP
+    expect(getActualORPIndex('мир')).toBe(0)       // 'м' is ORP
+  })
+
+  it('should handle CJK characters', () => {
+    expect(getActualORPIndex('你好')).toBe(0)       // First character
+    expect(getActualORPIndex('你好世界')).toBe(1)   // Second character is ORP
   })
 })
 

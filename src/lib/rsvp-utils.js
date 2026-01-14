@@ -16,13 +16,15 @@ export function parseText(text) {
  * Calculate the Optimal Recognition Point (ORP) index for a word.
  * The ORP is the character position where the eye naturally focuses when reading.
  * Based on word length, this determines which letter should be highlighted.
+ * Supports all Unicode letters (Latin, Cyrillic, CJK, Arabic, etc.)
  *
  * @param {string} word - The word to calculate ORP for
  * @returns {number} The index of the letter that should be highlighted
  */
 export function getORPIndex(word) {
   if (!word || typeof word !== 'string') return 0
-  const len = word.replace(/[^a-zA-Z]/g, '').length
+  // Use Unicode letter category to support all languages
+  const len = word.replace(/[^\p{L}]/gu, '').length
   if (len <= 1) return 0
   if (len <= 3) return 0
   if (len <= 5) return 1
@@ -33,10 +35,14 @@ export function getORPIndex(word) {
 /**
  * Get the actual character index for ORP, accounting for leading punctuation.
  * This adjusts the ORP index to skip over non-letter characters.
+ * Supports all Unicode letters.
  *
  * @param {string} word - The word to calculate actual ORP for
  * @returns {number} The actual character index in the word
  */
+// Pre-compiled regex for performance
+const unicodeLetterRegex = /\p{L}/u
+
 export function getActualORPIndex(word) {
   if (!word || typeof word !== 'string') return 0
 
@@ -44,7 +50,7 @@ export function getActualORPIndex(word) {
   let letterCount = 0
 
   for (let i = 0; i < word.length; i++) {
-    if (/[a-zA-Z]/.test(word[i])) {
+    if (unicodeLetterRegex.test(word[i])) {
       if (letterCount === orpIndex) return i
       letterCount++
     }
