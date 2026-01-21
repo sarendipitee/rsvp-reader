@@ -38,6 +38,10 @@
   let savedSessionInfo = null;
   let showSavedSessionPrompt = false;
 
+  // Drag and drop state
+  let isDraggingOver = false;
+  let dragCounter = 0;
+
   // Settings
   let wordsPerMinute = 300;
   let fadeEnabled = true;
@@ -175,6 +179,53 @@
     } finally {
       isLoadingFile = false;
     }
+  }
+
+  function isValidFileType(file) {
+    const extensions = getSupportedExtensions().split(',');
+    const fileName = file.name.toLowerCase();
+    return extensions.some(ext => fileName.endsWith(ext));
+  }
+
+  function handleDragEnter(event) {
+    event.preventDefault();
+    dragCounter++;
+    if (event.dataTransfer?.types.includes('Files')) {
+      isDraggingOver = true;
+    }
+  }
+
+  function handleDragLeave(event) {
+    event.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) {
+      isDraggingOver = false;
+    }
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'copy';
+    }
+  }
+
+  async function handleDrop(event) {
+    event.preventDefault();
+    dragCounter = 0;
+    isDraggingOver = false;
+
+    const files = event.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    if (!isValidFileType(file)) {
+      loadingMessage = `Unsupported file type. Please use ${getSupportedExtensions()}`;
+      setTimeout(() => { loadingMessage = ''; }, 3000);
+      return;
+    }
+
+    await handleFileSelect({ detail: { file } });
   }
 
   function saveCurrentSession() {
@@ -348,7 +399,25 @@
   });
 </script>
 
-<main class:focus-mode={isFocusMode}>
+<main
+  class:focus-mode={isFocusMode}
+  on:dragenter={handleDragEnter}
+  on:dragleave={handleDragLeave}
+  on:dragover={handleDragOver}
+  on:drop={handleDrop}
+>
+  <!-- Drop zone overlay -->
+  {#if isDraggingOver}
+    <div class="drop-zone-overlay">
+      <div class="drop-zone-content">
+        <svg viewBox="0 0 24 24" fill="currentColor" class="drop-icon">
+          <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zM8 15.01l1.41 1.41L11 14.84V19h2v-4.16l1.59 1.59L16 15.01 12.01 11 8 15.01z"/>
+        </svg>
+        <p>Drop PDF or EPUB file here</p>
+      </div>
+    </div>
+  {/if}
+
   <!-- Header - hidden during focus mode -->
   {#if !isFocusMode}
     <header>
@@ -868,5 +937,43 @@
   .icon-btn:disabled {
     opacity: 0.3;
     cursor: not-allowed;
+  }
+
+  /* Drop zone overlay */
+  .drop-zone-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    pointer-events: none;
+  }
+
+  .drop-zone-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 3rem;
+    border: 3px dashed #ff4444;
+    border-radius: 16px;
+    color: #fff;
+  }
+
+  .drop-icon {
+    width: 64px;
+    height: 64px;
+    color: #ff4444;
+  }
+
+  .drop-zone-content p {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #ccc;
   }
 </style>
