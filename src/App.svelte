@@ -1,8 +1,11 @@
 <script>
 import { onDestroy, onMount } from "svelte";
-import Controls from "./lib/components/Controls.svelte";
-import ProgressBar from "./lib/components/ProgressBar.svelte";
+import BottomBar from "./lib/components/BottomBar.svelte";
+import DropZoneOverlay from "./lib/components/DropZoneOverlay.svelte";
+import Header from "./lib/components/Header.svelte";
+import JumpToPanel from "./lib/components/JumpToPanel.svelte";
 import RSVPDisplay from "./lib/components/RSVPDisplay.svelte";
+import SavedSessionPrompt from "./lib/components/SavedSessionPrompt.svelte";
 import Settings from "./lib/components/Settings.svelte";
 import SidePanel from "./lib/components/SidePanel.svelte";
 import TextInput from "./lib/components/TextInput.svelte";
@@ -35,7 +38,6 @@ let progress = 0;
 let isLoadingFile = false;
 let loadingMessage = "";
 let showJumpTo = false;
-let jumpToValue = "";
 let savedSessionInfo = null;
 let showSavedSessionPrompt = false;
 
@@ -140,7 +142,7 @@ function start() {
 	isPaused = false;
 	showSettings = false;
 	showTextInput = false;
-	showSidePanel = false; // Auto-close side panel when playback starts
+	showSidePanel = false;
 	showNextWord();
 }
 
@@ -316,33 +318,11 @@ function clearSavedSession() {
 	savedSessionInfo = null;
 }
 
-function jumpToWord(value) {
-	if (!value || words.length === 0) return;
-
-	let targetIndex;
-	const trimmed = value.trim();
-
-	if (trimmed.endsWith("%")) {
-		const percent = parseFloat(trimmed.slice(0, -1));
-		if (!isNaN(percent)) {
-			targetIndex = Math.floor(
-				(Math.max(0, Math.min(100, percent)) / 100) * words.length,
-			);
-		}
-	} else {
-		const num = parseInt(trimmed, 10);
-		if (!isNaN(num)) {
-			targetIndex = Math.max(0, Math.min(words.length, num));
-		}
-	}
-
-	if (targetIndex !== undefined) {
-		currentWordIndex = targetIndex;
-		progress = (currentWordIndex / words.length) * 100;
-	}
-
+function handleJump(event) {
+	const targetIndex = event.detail.index;
+	currentWordIndex = targetIndex;
+	progress = (currentWordIndex / words.length) * 100;
 	showJumpTo = false;
-	jumpToValue = "";
 }
 
 function handleProgressClick(event) {
@@ -352,32 +332,30 @@ function handleProgressClick(event) {
 	progress = (currentWordIndex / words.length) * 100;
 }
 
-/**
- * Handle word click from side panel
- * @param {number} wordIndex
- */
 function handleSidePanelWordClick(wordIndex) {
 	currentWordIndex = wordIndex + 1;
 	progress = (currentWordIndex / words.length) * 100;
 }
 
-/**
- * Handle chapter click from side panel ToC
- * @param {number} wordIndex
- */
 function handleChapterClick(wordIndex) {
 	currentWordIndex = wordIndex;
 	progress = (currentWordIndex / words.length) * 100;
 }
 
-/**
- * Toggle side panel visibility
- */
 function toggleSidePanel() {
 	showSidePanel = !showSidePanel;
 	showSettings = false;
 	showTextInput = false;
 	showJumpTo = false;
+}
+
+function handleWpmChange(event) {
+	wordsPerMinute = event.detail.wpm;
+}
+
+function handleSkip(event) {
+	currentWordIndex = event.detail.index;
+	progress = (currentWordIndex / words.length) * 100;
 }
 
 function handleKeydown(e) {
@@ -393,7 +371,6 @@ function handleKeydown(e) {
 		case "Escape":
 			if (showJumpTo) {
 				showJumpTo = false;
-				jumpToValue = "";
 			} else if (showSidePanel) {
 				showSidePanel = false;
 			} else if (showSettings || showTextInput) {
@@ -402,7 +379,6 @@ function handleKeydown(e) {
 			} else if (showSavedSessionPrompt) {
 				showSavedSessionPrompt = false;
 			} else if (isPlaying || isPaused) {
-				// Exit focus mode but preserve position
 				isPlaying = false;
 				isPaused = false;
 				if (intervalId) {
@@ -458,7 +434,6 @@ onMount(() => {
 	parseText();
 	window.addEventListener("keydown", handleKeydown);
 
-	// Check for saved session
 	if (hasSession()) {
 		savedSessionInfo = getSessionSummary();
 		if (savedSessionInfo) {
@@ -481,78 +456,23 @@ onDestroy(() => {
   on:dragover={handleDragOver}
   on:drop={handleDrop}
 >
-  <!-- Drop zone overlay -->
-  {#if isDraggingOver}
-    <div class="drop-zone-overlay">
-      <div class="drop-zone-content">
-        <svg viewBox="0 0 24 24" fill="currentColor" class="drop-icon">
-          <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zM8 15.01l1.41 1.41L11 14.84V19h2v-4.16l1.59 1.59L16 15.01 12.01 11 8 15.01z"/>
-        </svg>
-        <p>Drop PDF or EPUB file here</p>
-      </div>
-    </div>
-  {/if}
+  <DropZoneOverlay visible={isDraggingOver} />
 
-  <!-- Header - hidden during focus mode -->
   {#if !isFocusMode}
-    <header>
-      <h1>RSVP Reader</h1>
-      <div class="header-actions">
-        <button
-          class="icon-btn"
-          on:click={toggleSidePanel}
-          title="Toggle text panel (T)"
-          class:active={showSidePanel}
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M3 5h18v2H3V5zm0 4h18v2H3V9zm0 4h18v2H3v-2zm0 4h18v2H3v-2z"/>
-          </svg>
-        </button>
-        <button
-          class="icon-btn"
-          on:click={() => { showJumpTo = !showJumpTo; showSettings = false; showTextInput = false; showSidePanel = false; }}
-          title="Jump to word (G)"
-          class:active={showJumpTo}
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/>
-          </svg>
-        </button>
-        <button
-          class="icon-btn"
-          on:click={saveCurrentSession}
-          title="Save progress (Ctrl+S)"
-          disabled={words.length === 0}
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
-          </svg>
-        </button>
-        <button
-          class="icon-btn"
-          on:click={() => { showTextInput = !showTextInput; showSettings = false; showJumpTo = false; showSidePanel = false; }}
-          title="Load Content"
-          class:active={showTextInput}
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/>
-          </svg>
-        </button>
-        <button
-          class="icon-btn"
-          on:click={() => { showSettings = !showSettings; showTextInput = false; showJumpTo = false; showSidePanel = false; }}
-          title="Settings"
-          class:active={showSettings}
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-          </svg>
-        </button>
-      </div>
-    </header>
+    <Header
+      {showSidePanel}
+      {showJumpTo}
+      {showSettings}
+      {showTextInput}
+      wordsLength={words.length}
+      on:toggleSidePanel={toggleSidePanel}
+      on:toggleJumpTo={() => { showJumpTo = !showJumpTo; showSettings = false; showTextInput = false; showSidePanel = false; }}
+      on:toggleSettings={() => { showSettings = !showSettings; showTextInput = false; showJumpTo = false; showSidePanel = false; }}
+      on:toggleTextInput={() => { showTextInput = !showTextInput; showSettings = false; showJumpTo = false; showSidePanel = false; }}
+      on:save={saveCurrentSession}
+    />
   {/if}
 
-  <!-- Panels -->
   {#if showTextInput && !isFocusMode}
     <div class="panel-overlay">
       <TextInput
@@ -565,7 +485,6 @@ onDestroy(() => {
       />
     </div>
   {/if}
-
 
   {#if showSettings && !isFocusMode}
     <div class="panel-overlay">
@@ -585,50 +504,22 @@ onDestroy(() => {
   {/if}
 
   {#if showJumpTo && !isFocusMode}
-    <div class="panel-overlay" on:click|self={() => showJumpTo = false} role="presentation">
-      <div class="jump-to-panel">
-        <h3>Jump to position</h3>
-        <p class="jump-hint">Enter word number (e.g., 150) or percentage (e.g., 50%)</p>
-        <form on:submit|preventDefault={() => jumpToWord(jumpToValue)}>
-          <!-- svelte-ignore a11y_autofocus -->
-          <input
-            type="text"
-            bind:value={jumpToValue}
-            placeholder="Word # or %"
-            autofocus
-          />
-          <div class="jump-actions">
-            <button type="button" class="secondary" on:click={() => showJumpTo = false}>Cancel</button>
-            <button type="submit" class="primary">Go</button>
-          </div>
-        </form>
-        <div class="quick-jumps">
-          <button on:click={() => jumpToWord('0')}>Start</button>
-          <button on:click={() => jumpToWord('25%')}>25%</button>
-          <button on:click={() => jumpToWord('50%')}>50%</button>
-          <button on:click={() => jumpToWord('75%')}>75%</button>
-        </div>
-      </div>
-    </div>
+    <JumpToPanel
+      wordsLength={words.length}
+      on:jump={handleJump}
+      on:close={() => showJumpTo = false}
+    />
   {/if}
 
   {#if showSavedSessionPrompt && savedSessionInfo}
-    <div class="panel-overlay">
-      <div class="saved-session-panel">
-        <h3>Resume reading?</h3>
-        <p>You have a saved session at word {savedSessionInfo.currentWordIndex} of {savedSessionInfo.totalWords}</p>
-        <p class="saved-time">Saved {new Date(savedSessionInfo.savedAt).toLocaleString()}</p>
-        <div class="session-actions">
-          <button class="secondary" on:click={clearSavedSession}>Start Fresh</button>
-          <button class="primary" on:click={loadSavedSession}>Resume</button>
-        </div>
-      </div>
-    </div>
+    <SavedSessionPrompt
+      sessionInfo={savedSessionInfo}
+      on:resume={loadSavedSession}
+      on:clear={clearSavedSession}
+    />
   {/if}
 
-  <!-- Main Display Area with Optional Side Panel -->
   <div class="content-area">
-    <!-- Desktop: Side panel with CSS resize -->
     {#if showSidePanel && !isFocusMode}
       <div class="side-panel-container">
         <SidePanel
@@ -657,7 +548,6 @@ onDestroy(() => {
       />
     </div>
 
-    <!-- Mobile: Bottom sheet overlay (shown when panel is open on mobile) -->
     {#if showSidePanel && !isFocusMode}
       <div class="mobile-bottom-sheet">
         <div class="bottom-sheet-handle"></div>
@@ -675,60 +565,24 @@ onDestroy(() => {
     {/if}
   </div>
 
-  <!-- Bottom Bar -->
-  <div class="bottom-bar" class:minimal={isFocusMode}>
-    <ProgressBar
-      {progress}
-      currentWord={currentWordIndex}
-      totalWords={words.length}
-      wpm={wordsPerMinute}
-      {timeRemaining}
-      minimal={isFocusMode}
-      clickable={!isPlaying}
-      on:seek={handleProgressClick}
-    />
-
-    <div class="controls-area">
-      <Controls
-        {isPlaying}
-        {isPaused}
-        canPlay={words.length > 0}
-        minimal={isFocusMode}
-        on:play={start}
-        on:pause={pause}
-        on:resume={resume}
-        on:stop={stop}
-        on:restart={restart}
-      />
-    </div>
-
-    {#if !isFocusMode}
-      <div class="shortcuts desktop-only">
-        <kbd>Space</kbd> Play
-        <kbd>Esc</kbd> Exit
-        <kbd>↑↓</kbd> Speed
-        <kbd>←→</kbd> Skip
-        <kbd>G</kbd> Jump
-        <kbd>T</kbd> Panel
-        <kbd>Ctrl+S</kbd> Save
-      </div>
-      <div class="touch-controls mobile-only">
-        <button class="touch-btn" on:click={() => currentWordIndex = Math.max(0, currentWordIndex - 5)} title="Back 5 words">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
-        </button>
-        <button class="touch-btn" on:click={() => wordsPerMinute = Math.max(50, wordsPerMinute - 50)} title="Slower">
-          <span>−WPM</span>
-        </button>
-        <span class="wpm-display">{wordsPerMinute}</span>
-        <button class="touch-btn" on:click={() => wordsPerMinute = Math.min(1000, wordsPerMinute + 50)} title="Faster">
-          <span>+WPM</span>
-        </button>
-        <button class="touch-btn" on:click={() => currentWordIndex = Math.min(words.length, currentWordIndex + 5)} title="Forward 5 words">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>
-        </button>
-      </div>
-    {/if}
-  </div>
+  <BottomBar
+    {isFocusMode}
+    {progress}
+    {currentWordIndex}
+    wordsLength={words.length}
+    {wordsPerMinute}
+    {timeRemaining}
+    {isPlaying}
+    {isPaused}
+    on:seek={handleProgressClick}
+    on:play={start}
+    on:pause={pause}
+    on:resume={resume}
+    on:stop={stop}
+    on:restart={restart}
+    on:wpmChange={handleWpmChange}
+    on:skip={handleSkip}
+  />
 </main>
 
 <style>
@@ -744,7 +598,7 @@ onDestroy(() => {
 
   main {
     height: 100vh;
-    height: 100dvh; /* Dynamic viewport height for mobile */
+    height: 100dvh;
     display: flex;
     flex-direction: column;
     background-color: #000;
@@ -758,54 +612,6 @@ onDestroy(() => {
 
   main.focus-mode {
     padding: 1rem;
-  }
-
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    flex-shrink: 0;
-  }
-
-  h1 {
-    font-size: 1.25rem;
-    font-weight: 400;
-    color: #555;
-    margin: 0;
-  }
-
-  .header-actions {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .icon-btn {
-    background: transparent;
-    border: 1px solid #333;
-    color: #555;
-    padding: 0.5rem;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .icon-btn:hover {
-    border-color: #555;
-    color: #fff;
-  }
-
-  .icon-btn.active {
-    border-color: #ff4444;
-    color: #ff4444;
-  }
-
-  .icon-btn svg {
-    width: 20px;
-    height: 20px;
   }
 
   .panel-overlay {
@@ -838,7 +644,6 @@ onDestroy(() => {
     overflow: hidden;
   }
 
-  /* Side panel container - CSS resize */
   .side-panel-container {
     width: 300px;
     min-width: 200px;
@@ -849,7 +654,6 @@ onDestroy(() => {
     flex-shrink: 0;
   }
 
-  /* Mobile bottom sheet */
   .mobile-bottom-sheet {
     display: none;
     position: fixed;
@@ -873,93 +677,6 @@ onDestroy(() => {
     flex-shrink: 0;
   }
 
-  .bottom-bar {
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    padding-top: 1rem;
-    transition: all 0.3s ease;
-  }
-
-  .bottom-bar.minimal {
-    gap: 0.5rem;
-    padding-top: 0.5rem;
-  }
-
-  .controls-area {
-    display: flex;
-    justify-content: center;
-  }
-
-  .shortcuts {
-    display: flex;
-    justify-content: center;
-    gap: 1.5rem;
-    color: #444;
-    font-size: 0.8rem;
-  }
-
-  kbd {
-    background: #1a1a1a;
-    padding: 0.15rem 0.4rem;
-    border-radius: 3px;
-    font-family: monospace;
-    color: #666;
-    margin-right: 0.25rem;
-  }
-
-  /* Touch controls for mobile */
-  .touch-controls {
-    display: none;
-    justify-content: center;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .touch-btn {
-    background: #1a1a1a;
-    border: 1px solid #333;
-    color: #888;
-    padding: 0.5rem 0.75rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    cursor: pointer;
-    min-width: 44px;
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
-  }
-
-  .touch-btn:active {
-    background: #333;
-    color: #fff;
-  }
-
-  .touch-btn svg {
-    width: 20px;
-    height: 20px;
-  }
-
-  .wpm-display {
-    color: #ff4444;
-    font-family: monospace;
-    font-size: 0.85rem;
-    min-width: 3rem;
-    text-align: center;
-  }
-
-  .mobile-only {
-    display: none;
-  }
-
-  .desktop-only {
-    display: flex;
-  }
-
-  /* Mobile styles */
   @media (max-width: 600px) {
     main {
       padding: 1rem;
@@ -973,181 +690,12 @@ onDestroy(() => {
       padding: 1rem;
     }
 
-    .desktop-only {
-      display: none;
-    }
-
-    .mobile-only {
-      display: flex;
-    }
-
-    /* Hide desktop side panel on mobile */
     .side-panel-container {
       display: none;
     }
 
-    /* Show mobile bottom sheet on mobile */
     .mobile-bottom-sheet {
       display: flex;
     }
-  }
-
-  /* Jump to panel */
-  .jump-to-panel,
-  .saved-session-panel {
-    background: #1a1a1a;
-    border: 1px solid #333;
-    border-radius: 12px;
-    padding: 1.5rem;
-    max-width: 320px;
-    width: 100%;
-  }
-
-  .jump-to-panel h3,
-  .saved-session-panel h3 {
-    margin: 0 0 0.5rem 0;
-    color: #fff;
-    font-size: 1.1rem;
-  }
-
-  .jump-hint {
-    color: #666;
-    font-size: 0.85rem;
-    margin: 0 0 1rem 0;
-  }
-
-  .jump-to-panel input {
-    width: 100%;
-    padding: 0.75rem;
-    background: #111;
-    border: 1px solid #333;
-    border-radius: 6px;
-    color: #fff;
-    font-size: 1rem;
-    margin-bottom: 1rem;
-    box-sizing: border-box;
-  }
-
-  .jump-to-panel input:focus {
-    outline: none;
-    border-color: #ff4444;
-  }
-
-  .jump-actions,
-  .session-actions {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: flex-end;
-  }
-
-  .jump-actions button,
-  .session-actions button {
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    border: none;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-  }
-
-  .jump-actions button.primary,
-  .session-actions button.primary {
-    background: #ff4444;
-    color: #fff;
-  }
-
-  .jump-actions button.primary:hover,
-  .session-actions button.primary:hover {
-    background: #ff6666;
-  }
-
-  .jump-actions button.secondary,
-  .session-actions button.secondary {
-    background: #333;
-    color: #fff;
-  }
-
-  .jump-actions button.secondary:hover,
-  .session-actions button.secondary:hover {
-    background: #444;
-  }
-
-  .quick-jumps {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid #333;
-  }
-
-  .quick-jumps button {
-    flex: 1;
-    padding: 0.5rem;
-    background: #222;
-    border: 1px solid #333;
-    border-radius: 4px;
-    color: #888;
-    cursor: pointer;
-    font-size: 0.8rem;
-    transition: all 0.2s;
-  }
-
-  .quick-jumps button:hover {
-    background: #333;
-    color: #fff;
-  }
-
-  .saved-session-panel p {
-    margin: 0.5rem 0;
-    color: #ccc;
-  }
-
-  .saved-session-panel .saved-time {
-    color: #666;
-    font-size: 0.85rem;
-    margin-bottom: 1rem;
-  }
-
-  .icon-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
-
-  /* Drop zone overlay */
-  .drop-zone-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.9);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 200;
-    pointer-events: none;
-  }
-
-  .drop-zone-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1.5rem;
-    padding: 3rem;
-    border: 3px dashed #ff4444;
-    border-radius: 16px;
-    color: #fff;
-  }
-
-  .drop-icon {
-    width: 64px;
-    height: 64px;
-    color: #ff4444;
-  }
-
-  .drop-zone-content p {
-    margin: 0;
-    font-size: 1.25rem;
-    color: #ccc;
   }
 </style>
