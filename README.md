@@ -2,9 +2,8 @@
 
 A Svelte-based Rapid Serial Visual Presentation (RSVP) reader for speed reading with PDF and EPUB support.
 
-## Online version / DEMO
+[<img width="1299" height="1149" alt="Screenshot 2026-01-21 at 11 15 45 AM" src="https://github.com/user-attachments/assets/99baecde-9584-4739-aecf-3c2120022430" />](https://sarendipitee.github.io/rsvp-reader/)
 
-Link: https://rsvp.n0name.eu/
 
 <video src="rsvp-clip.mp4" controls width="600"></video>
 
