@@ -21,7 +21,9 @@
     "vitest": "^4.0.17"
   },
   "dependencies": {
+    "@humanspeak/svelte-virtual-list": "^0.3.6",
     "epubjs": "^0.3.93",
+    "paneforge": "^1.0.2",
     "pdfjs-dist": "^5.4.530"
   }
 }

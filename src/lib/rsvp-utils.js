@@ -174,3 +174,131 @@ export function extractWordFrame(allWords, centerIdx, frameSize) {
 
   return { subset, centerOffset };
 }
+
+/**
+ * @typedef {Object} WordParagraph
+ * @property {string[]} words - Words in this paragraph
+ * @property {number} startIndex - Starting word index in the global array
+ * @property {number} endIndex - Ending word index in the global array
+ * @property {string | null} chapterTitle - Chapter title if this paragraph starts a chapter
+ * @property {number} chapterLevel - Chapter nesting level (0 = top level)
+ */
+
+/**
+ * @typedef {Object} Chapter
+ * @property {string} id
+ * @property {string} title
+ * @property {number} level
+ * @property {number} wordStartIndex
+ * @property {number} wordEndIndex
+ */
+
+/**
+ * Group words into paragraphs for virtual list display.
+ * This reduces the number of virtual list items from N words to N/size paragraphs.
+ *
+ * @param {string[]} words - Array of all words
+ * @param {number} wordsPerParagraph - Target words per paragraph (default: 50)
+ * @returns {WordParagraph[]} Array of paragraph objects
+ */
+export function groupWordsIntoParagraphs(words, wordsPerParagraph = 50) {
+  if (!words || words.length === 0) return [];
+
+  /** @type {WordParagraph[]} */
+  const paragraphs = [];
+
+  for (let i = 0; i < words.length; i += wordsPerParagraph) {
+    const endIndex = Math.min(i + wordsPerParagraph - 1, words.length - 1);
+    paragraphs.push({
+      words: words.slice(i, endIndex + 1),
+      startIndex: i,
+      endIndex,
+      chapterTitle: null,
+      chapterLevel: 0
+    });
+  }
+
+  return paragraphs;
+}
+
+/**
+ * Group words into paragraphs using actual paragraph break positions.
+ * Also adds chapter heading information.
+ *
+ * @param {string[]} words - Array of all words
+ * @param {number[]} paragraphBreaks - Word indices where paragraphs start
+ * @param {Chapter[]} chapters - Chapter metadata
+ * @returns {WordParagraph[]} Array of paragraph objects
+ */
+export function groupWordsIntoRealParagraphs(words, paragraphBreaks, chapters = []) {
+  if (!words || words.length === 0) return [];
+
+  // Default to synthetic paragraphs if no breaks provided
+  if (!paragraphBreaks || paragraphBreaks.length === 0) {
+    return groupWordsIntoParagraphs(words, 50);
+  }
+
+  // Sort chapters by start index for efficient lookup
+  const sortedChapters = [...chapters].sort((a, b) => a.wordStartIndex - b.wordStartIndex);
+
+  // Track which chapters have been assigned to avoid duplicates
+  const assignedChapters = new Set();
+
+  /** @type {WordParagraph[]} */
+  const paragraphs = [];
+
+  // Sort breaks to ensure order
+  const sortedBreaks = [...paragraphBreaks].sort((a, b) => a - b);
+
+  for (let i = 0; i < sortedBreaks.length; i++) {
+    const startIndex = sortedBreaks[i];
+    const endIndex = (i < sortedBreaks.length - 1)
+      ? sortedBreaks[i + 1] - 1
+      : words.length - 1;
+
+    if (startIndex > endIndex || startIndex >= words.length) continue;
+
+    // Find chapter whose wordStartIndex falls within this paragraph's range
+    // This handles cases where chapter start doesn't exactly match paragraph start
+    let matchedChapter = null;
+    for (const chapter of sortedChapters) {
+      if (assignedChapters.has(chapter.id)) continue;
+
+      // Chapter starts within this paragraph's range
+      if (chapter.wordStartIndex >= startIndex && chapter.wordStartIndex <= endIndex) {
+        matchedChapter = chapter;
+        assignedChapters.add(chapter.id);
+        break;
+      }
+    }
+
+    paragraphs.push({
+      words: words.slice(startIndex, endIndex + 1),
+      startIndex,
+      endIndex,
+      chapterTitle: matchedChapter?.title || null,
+      chapterLevel: matchedChapter?.level || 0
+    });
+  }
+
+  return paragraphs;
+}
+
+/**
+ * Find the paragraph index that contains a given word index
+ *
+ * @param {WordParagraph[]} paragraphs - Array of paragraphs
+ * @param {number} wordIndex - Word index to find
+ * @returns {number} Paragraph index, or -1 if not found
+ */
+export function findParagraphForWordIndex(paragraphs, wordIndex) {
+  if (!paragraphs || paragraphs.length === 0) return -1;
+
+  for (let i = 0; i < paragraphs.length; i++) {
+    if (wordIndex >= paragraphs[i].startIndex && wordIndex <= paragraphs[i].endIndex) {
+      return i;
+    }
+  }
+
+  return -1;
+}

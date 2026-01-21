@@ -1,402 +1,477 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
-  import {
-    parseText as parseTextUtil,
-    getWordDelay as getWordDelayUtil,
-    formatTimeRemaining,
-    shouldPauseAtWord
-  } from './lib/rsvp-utils.js';
-  import { parseFile } from './lib/file-parsers.js';
-  import {
-    saveSession,
-    loadSession,
-    clearSession,
-    hasSession,
-    getSessionSummary
-  } from './lib/progress-storage.js';
-  import RSVPDisplay from './lib/components/RSVPDisplay.svelte';
-  import Controls from './lib/components/Controls.svelte';
-  import Settings from './lib/components/Settings.svelte';
-  import TextInput from './lib/components/TextInput.svelte';
-  import ProgressBar from './lib/components/ProgressBar.svelte';
-  import { extractWordFrame } from './lib/rsvp-utils.js';
+import { onDestroy, onMount } from "svelte";
+import Controls from "./lib/components/Controls.svelte";
+import ProgressBar from "./lib/components/ProgressBar.svelte";
+import RSVPDisplay from "./lib/components/RSVPDisplay.svelte";
+import Settings from "./lib/components/Settings.svelte";
+import SidePanel from "./lib/components/SidePanel.svelte";
+import TextInput from "./lib/components/TextInput.svelte";
+import { getSupportedExtensions, parseFile } from "./lib/file-parsers.js";
+import {
+	clearSession,
+	getSessionSummary,
+	hasSession,
+	loadSession,
+	saveSession,
+} from "./lib/progress-storage.js";
+import {
+	extractWordFrame,
+	formatTimeRemaining,
+	getWordDelay as getWordDelayUtil,
+	parseText as parseTextUtil,
+	shouldPauseAtWord,
+} from "./lib/rsvp-utils.js";
 
-  // State
-  let frameWordCount = 1;
-  let text = `Rapid serial visual presentation (RSVP) is a scientific method for studying the timing of vision. In RSVP, a sequence of stimuli is shown to an observer at one location in their visual field. This technique has been adapted for speed reading applications, where words are displayed one at a time at a fixed point, eliminating the need for eye movements and potentially increasing reading speed significantly.`;
-  let words = [];
-  let currentWordIndex = 0;
-  let isPlaying = false;
-  let isPaused = false;
-  let showSettings = false;
-  let showTextInput = false;
-  let progress = 0;
-  let isLoadingFile = false;
-  let loadingMessage = '';
-  let showJumpTo = false;
-  let jumpToValue = '';
-  let savedSessionInfo = null;
-  let showSavedSessionPrompt = false;
+// State
+let frameWordCount = 1;
+let text = `Rapid serial visual presentation (RSVP) is a scientific method for studying the timing of vision. In RSVP, a sequence of stimuli is shown to an observer at one location in their visual field. This technique has been adapted for speed reading applications, where words are displayed one at a time at a fixed point, eliminating the need for eye movements and potentially increasing reading speed significantly.`;
+let words = [];
+let currentWordIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let showSettings = false;
+let showTextInput = false;
+let progress = 0;
+let isLoadingFile = false;
+let loadingMessage = "";
+let showJumpTo = false;
+let jumpToValue = "";
+let savedSessionInfo = null;
+let showSavedSessionPrompt = false;
 
-  // Drag and drop state
-  let isDraggingOver = false;
-  let dragCounter = 0;
+// Drag and drop state
+let isDraggingOver = false;
+let dragCounter = 0;
 
-  // Settings
-  let wordsPerMinute = 300;
-  let fadeEnabled = true;
-  let fadeDuration = 150;
-  let pauseAfterWords = 0;
-  let pauseDuration = 500;
-  let pauseOnPunctuation = true;
-  let punctuationPauseMultiplier = 2;
-  let wordLengthWPMMultiplier = 5;
+// Side panel state
+let showSidePanel = false;
+/** @type {import('./lib/file-parsers.js').Chapter[]} */
+let chapters = [];
+let hasToC = false;
+/** @type {number[]} */
+let paragraphBreaks = [];
+/** @type {SidePanel | null} */
+let sidePanelRef = null;
 
-  // Animation
-  let wordOpacity = 1;
-  let intervalId = null;
-  let fadeTimeoutId = null;
+// Settings
+let wordsPerMinute = 300;
+let fadeEnabled = true;
+let fadeDuration = 150;
+let pauseAfterWords = 0;
+let pauseDuration = 500;
+let pauseOnPunctuation = true;
+let punctuationPauseMultiplier = 2;
+let wordLengthWPMMultiplier = 5;
 
-  // Derived state
-  $: currentWord = words[currentWordIndex - 1] || (words.length > 0 ? words[0] : '');
-  $: wordFrame = extractWordFrame(words, Math.max(0, currentWordIndex - 1), frameWordCount);
-  $: timeRemaining = formatTimeRemaining(words.length - currentWordIndex, wordsPerMinute);
-  $: isFocusMode = isPlaying || isPaused;
+// Animation
+let wordOpacity = 1;
+let intervalId = null;
+let fadeTimeoutId = null;
 
-  function parseText() {
-    words = parseTextUtil(text);
-    currentWordIndex = 0;
-    progress = 0;
-  }
+// Derived state
+$: currentWord =
+	words[currentWordIndex - 1] || (words.length > 0 ? words[0] : "");
+$: wordFrame = extractWordFrame(
+	words,
+	Math.max(0, currentWordIndex - 1),
+	frameWordCount,
+);
+$: timeRemaining = formatTimeRemaining(
+	words.length - currentWordIndex,
+	wordsPerMinute,
+);
+$: isFocusMode = isPlaying || isPaused;
 
-  function getWordDelay(word) {
-    return getWordDelayUtil(word, wordsPerMinute, pauseOnPunctuation, punctuationPauseMultiplier, wordLengthWPMMultiplier);
-  }
+function parseText() {
+	words = parseTextUtil(text);
+	currentWordIndex = 0;
+	progress = 0;
+}
 
-  function showNextWord() {
-    if (currentWordIndex >= words.length) {
-      stop();
-      return;
-    }
+function getWordDelay(word) {
+	return getWordDelayUtil(
+		word,
+		wordsPerMinute,
+		pauseOnPunctuation,
+		punctuationPauseMultiplier,
+		wordLengthWPMMultiplier,
+	);
+}
 
-    if (shouldPauseAtWord(currentWordIndex, pauseAfterWords)) {
-      isPaused = true;
-      setTimeout(() => {
-        if (isPlaying) {
-          isPaused = false;
-          scheduleNextWord();
-        }
-      }, pauseDuration);
-      return;
-    }
+function showNextWord() {
+	if (currentWordIndex >= words.length) {
+		stop();
+		return;
+	}
 
-    if (fadeEnabled) {
-      wordOpacity = 0;
-      fadeTimeoutId = setTimeout(() => {
-        wordOpacity = 1;
-      }, 10);
-    }
+	if (shouldPauseAtWord(currentWordIndex, pauseAfterWords)) {
+		isPaused = true;
+		setTimeout(() => {
+			if (isPlaying) {
+				isPaused = false;
+				scheduleNextWord();
+			}
+		}, pauseDuration);
+		return;
+	}
 
-    progress = ((currentWordIndex + 1) / words.length) * 100;
-    currentWordIndex++;
-    scheduleNextWord();
-  }
+	if (fadeEnabled) {
+		wordOpacity = 0;
+		fadeTimeoutId = setTimeout(() => {
+			wordOpacity = 1;
+		}, 10);
+	}
 
-  function scheduleNextWord() {
-    if (!isPlaying || currentWordIndex >= words.length) return;
-    const word = words[currentWordIndex - 1] || '';
-    intervalId = setTimeout(showNextWord, getWordDelay(word));
-  }
+	progress = ((currentWordIndex + 1) / words.length) * 100;
+	currentWordIndex++;
+	scheduleNextWord();
+}
 
-  function start() {
-    if (words.length === 0) parseText();
-    if (words.length === 0) return;
-    isPlaying = true;
-    isPaused = false;
-    showSettings = false;
-    showTextInput = false;
-    showNextWord();
-  }
+function scheduleNextWord() {
+	if (!isPlaying || currentWordIndex >= words.length) return;
+	const word = words[currentWordIndex - 1] || "";
+	intervalId = setTimeout(showNextWord, getWordDelay(word));
+}
 
-  function pause() {
-    isPlaying = false;
-    isPaused = true;
-    if (intervalId) {
-      clearTimeout(intervalId);
-      intervalId = null;
-    }
-  }
+function start() {
+	if (words.length === 0) parseText();
+	if (words.length === 0) return;
+	isPlaying = true;
+	isPaused = false;
+	showSettings = false;
+	showTextInput = false;
+	showSidePanel = false; // Auto-close side panel when playback starts
+	showNextWord();
+}
 
-  function resume() {
-    if (currentWordIndex < words.length) {
-      isPlaying = true;
-      isPaused = false;
-      scheduleNextWord();
-    }
-  }
+function pause() {
+	isPlaying = false;
+	isPaused = true;
+	if (intervalId) {
+		clearTimeout(intervalId);
+		intervalId = null;
+	}
+}
 
-  function stop() {
-    isPlaying = false;
-    isPaused = false;
-    currentWordIndex = 0;
-    progress = 0;
-    wordOpacity = 1;
-    if (intervalId) {
-      clearTimeout(intervalId);
-      intervalId = null;
-    }
-  }
+function resume() {
+	if (currentWordIndex < words.length) {
+		isPlaying = true;
+		isPaused = false;
+		scheduleNextWord();
+	}
+}
 
-  function restart() {
-    stop();
-    start();
-  }
+function stop() {
+	isPlaying = false;
+	isPaused = false;
+	currentWordIndex = 0;
+	progress = 0;
+	wordOpacity = 1;
+	if (intervalId) {
+		clearTimeout(intervalId);
+		intervalId = null;
+	}
+}
 
-  function handleTextApply(event) {
-    text = event.detail.text;
-    stop();
-    parseText();
-    showTextInput = false;
-  }
+function restart() {
+	stop();
+	start();
+}
 
-  async function handleFileSelect(event) {
-    const file = event.detail.file;
-    if (!file) return;
+function handleTextApply(event) {
+	text = event.detail.text;
+	stop();
+	parseText();
+	showTextInput = false;
+}
 
-    isLoadingFile = true;
-    loadingMessage = `Loading ${file.name}...`;
+async function handleFileSelect(event) {
+	const file = event.detail.file;
+	if (!file) return;
 
-    try {
-      text = await parseFile(file);
-      stop();
-      parseText();
-      showTextInput = false;
-      loadingMessage = '';
-    } catch (error) {
-      console.error('Error parsing file:', error);
-      loadingMessage = `Error: ${error.message}`;
-      setTimeout(() => { loadingMessage = ''; }, 3000);
-    } finally {
-      isLoadingFile = false;
-    }
-  }
+	isLoadingFile = true;
+	loadingMessage = `Loading ${file.name}...`;
 
-  function isValidFileType(file) {
-    const extensions = getSupportedExtensions().split(',');
-    const fileName = file.name.toLowerCase();
-    return extensions.some(ext => fileName.endsWith(ext));
-  }
+	try {
+		const result = await parseFile(file);
+		text = result.text;
+		chapters = result.chapters;
+		hasToC = result.hasToC;
+		paragraphBreaks = result.paragraphBreaks || [];
+		stop();
+		parseText();
+		showTextInput = false;
+		loadingMessage = "";
+	} catch (error) {
+		console.error("Error parsing file:", error);
+		loadingMessage = `Error: ${error.message}`;
+		setTimeout(() => {
+			loadingMessage = "";
+		}, 3000);
+	} finally {
+		isLoadingFile = false;
+	}
+}
 
-  function handleDragEnter(event) {
-    event.preventDefault();
-    dragCounter++;
-    if (event.dataTransfer?.types.includes('Files')) {
-      isDraggingOver = true;
-    }
-  }
+function isValidFileType(file) {
+	const extensions = getSupportedExtensions().split(",");
+	const fileName = file.name.toLowerCase();
+	return extensions.some((ext) => fileName.endsWith(ext));
+}
 
-  function handleDragLeave(event) {
-    event.preventDefault();
-    dragCounter--;
-    if (dragCounter === 0) {
-      isDraggingOver = false;
-    }
-  }
+function handleDragEnter(event) {
+	event.preventDefault();
+	dragCounter++;
+	if (event.dataTransfer?.types.includes("Files")) {
+		isDraggingOver = true;
+	}
+}
 
-  function handleDragOver(event) {
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'copy';
-    }
-  }
+function handleDragLeave(event) {
+	event.preventDefault();
+	dragCounter--;
+	if (dragCounter === 0) {
+		isDraggingOver = false;
+	}
+}
 
-  async function handleDrop(event) {
-    event.preventDefault();
-    dragCounter = 0;
-    isDraggingOver = false;
+function handleDragOver(event) {
+	event.preventDefault();
+	if (event.dataTransfer) {
+		event.dataTransfer.dropEffect = "copy";
+	}
+}
 
-    const files = event.dataTransfer?.files;
-    if (!files || files.length === 0) return;
+async function handleDrop(event) {
+	event.preventDefault();
+	dragCounter = 0;
+	isDraggingOver = false;
 
-    const file = files[0];
-    if (!isValidFileType(file)) {
-      loadingMessage = `Unsupported file type. Please use ${getSupportedExtensions()}`;
-      setTimeout(() => { loadingMessage = ''; }, 3000);
-      return;
-    }
+	const files = event.dataTransfer?.files;
+	if (!files || files.length === 0) return;
 
-    await handleFileSelect({ detail: { file } });
-  }
+	const file = files[0];
+	if (!isValidFileType(file)) {
+		loadingMessage = `Unsupported file type. Please use ${getSupportedExtensions()}`;
+		setTimeout(() => {
+			loadingMessage = "";
+		}, 3000);
+		return;
+	}
 
-  function saveCurrentSession() {
-    if (words.length === 0) return false;
-    return saveSession({
-      text,
-      currentWordIndex,
-      totalWords: words.length,
-      settings: {
-        wordsPerMinute,
-        fadeEnabled,
-        fadeDuration,
-        pauseOnPunctuation,
-        punctuationPauseMultiplier,
-        wordLengthWPMMultiplier,
-        pauseAfterWords,
-        pauseDuration,
-        frameWordCount
-      }
-    });
-  }
+	await handleFileSelect({ detail: { file } });
+}
 
-  function loadSavedSession() {
-    const session = loadSession();
-    if (!session) return false;
+function saveCurrentSession() {
+	if (words.length === 0) return false;
+	return saveSession({
+		text,
+		currentWordIndex,
+		totalWords: words.length,
+		settings: {
+			wordsPerMinute,
+			fadeEnabled,
+			fadeDuration,
+			pauseOnPunctuation,
+			punctuationPauseMultiplier,
+			wordLengthWPMMultiplier,
+			pauseAfterWords,
+			pauseDuration,
+			frameWordCount,
+		},
+	});
+}
 
-    text = session.text;
-    parseText();
-    currentWordIndex = session.currentWordIndex;
-    progress = (currentWordIndex / words.length) * 100;
+function loadSavedSession() {
+	const session = loadSession();
+	if (!session) return false;
 
-    if (session.settings) {
-      wordsPerMinute = session.settings.wordsPerMinute ?? wordsPerMinute;
-      fadeEnabled = session.settings.fadeEnabled ?? fadeEnabled;
-      fadeDuration = session.settings.fadeDuration ?? fadeDuration;
-      pauseOnPunctuation = session.settings.pauseOnPunctuation ?? pauseOnPunctuation;
-      punctuationPauseMultiplier = session.settings.punctuationPauseMultiplier ?? punctuationPauseMultiplier;
-      wordLengthWPMMultiplier = session.settings.wordLengthWPMMultiplier ?? wordLengthWPMMultiplier;
-      pauseAfterWords = session.settings.pauseAfterWords ?? pauseAfterWords;
-      pauseDuration = session.settings.pauseDuration ?? pauseDuration;
-      frameWordCount = session.settings.frameWordCount ?? frameWordCount;
-    }
+	text = session.text;
+	parseText();
+	currentWordIndex = session.currentWordIndex;
+	progress = (currentWordIndex / words.length) * 100;
 
-    showSavedSessionPrompt = false;
-    return true;
-  }
+	if (session.settings) {
+		wordsPerMinute = session.settings.wordsPerMinute ?? wordsPerMinute;
+		fadeEnabled = session.settings.fadeEnabled ?? fadeEnabled;
+		fadeDuration = session.settings.fadeDuration ?? fadeDuration;
+		pauseOnPunctuation =
+			session.settings.pauseOnPunctuation ?? pauseOnPunctuation;
+		punctuationPauseMultiplier =
+			session.settings.punctuationPauseMultiplier ?? punctuationPauseMultiplier;
+		wordLengthWPMMultiplier =
+			session.settings.wordLengthWPMMultiplier ?? wordLengthWPMMultiplier;
+		pauseAfterWords = session.settings.pauseAfterWords ?? pauseAfterWords;
+		pauseDuration = session.settings.pauseDuration ?? pauseDuration;
+		frameWordCount = session.settings.frameWordCount ?? frameWordCount;
+	}
 
-  function clearSavedSession() {
-    clearSession();
-    showSavedSessionPrompt = false;
-    savedSessionInfo = null;
-  }
+	showSavedSessionPrompt = false;
+	return true;
+}
 
-  function jumpToWord(value) {
-    if (!value || words.length === 0) return;
+function clearSavedSession() {
+	clearSession();
+	showSavedSessionPrompt = false;
+	savedSessionInfo = null;
+}
 
-    let targetIndex;
-    const trimmed = value.trim();
+function jumpToWord(value) {
+	if (!value || words.length === 0) return;
 
-    if (trimmed.endsWith('%')) {
-      const percent = parseFloat(trimmed.slice(0, -1));
-      if (!isNaN(percent)) {
-        targetIndex = Math.floor((Math.max(0, Math.min(100, percent)) / 100) * words.length);
-      }
-    } else {
-      const num = parseInt(trimmed, 10);
-      if (!isNaN(num)) {
-        targetIndex = Math.max(0, Math.min(words.length, num));
-      }
-    }
+	let targetIndex;
+	const trimmed = value.trim();
 
-    if (targetIndex !== undefined) {
-      currentWordIndex = targetIndex;
-      progress = (currentWordIndex / words.length) * 100;
-    }
+	if (trimmed.endsWith("%")) {
+		const percent = parseFloat(trimmed.slice(0, -1));
+		if (!isNaN(percent)) {
+			targetIndex = Math.floor(
+				(Math.max(0, Math.min(100, percent)) / 100) * words.length,
+			);
+		}
+	} else {
+		const num = parseInt(trimmed, 10);
+		if (!isNaN(num)) {
+			targetIndex = Math.max(0, Math.min(words.length, num));
+		}
+	}
 
-    showJumpTo = false;
-    jumpToValue = '';
-  }
+	if (targetIndex !== undefined) {
+		currentWordIndex = targetIndex;
+		progress = (currentWordIndex / words.length) * 100;
+	}
 
-  function handleProgressClick(event) {
-    const percentage = event.detail.percentage;
-    const targetIndex = Math.floor((percentage / 100) * words.length);
-    currentWordIndex = Math.max(0, Math.min(words.length, targetIndex));
-    progress = (currentWordIndex / words.length) * 100;
-  }
+	showJumpTo = false;
+	jumpToValue = "";
+}
 
-  function handleKeydown(e) {
-    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+function handleProgressClick(event) {
+	const percentage = event.detail.percentage;
+	const targetIndex = Math.floor((percentage / 100) * words.length);
+	currentWordIndex = Math.max(0, Math.min(words.length, targetIndex));
+	progress = (currentWordIndex / words.length) * 100;
+}
 
-    switch (e.code) {
-      case 'Space':
-        e.preventDefault();
-        if (isPlaying) pause();
-        else if (isPaused) resume();
-        else start();
-        break;
-      case 'Escape':
-        if (showJumpTo) {
-          showJumpTo = false;
-          jumpToValue = '';
-        } else if (showSettings || showTextInput) {
-          showSettings = false;
-          showTextInput = false;
-        } else if (showSavedSessionPrompt) {
-          showSavedSessionPrompt = false;
-        } else if (isPlaying || isPaused) {
-          // Exit focus mode but preserve position
-          isPlaying = false;
-          isPaused = false;
-          if (intervalId) {
-            clearTimeout(intervalId);
-            intervalId = null;
-          }
-        }
-        break;
-      case 'KeyG':
-        if (!isPlaying && !showSettings && !showTextInput) {
-          e.preventDefault();
-          showJumpTo = !showJumpTo;
-        }
-        break;
-      case 'KeyS':
-        if (e.ctrlKey || e.metaKey) {
-          e.preventDefault();
-          saveCurrentSession();
-        }
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        wordsPerMinute = Math.min(1000, wordsPerMinute + 25);
-        break;
-      case 'ArrowDown':
-        e.preventDefault();
-        wordsPerMinute = Math.max(50, wordsPerMinute - 25);
-        break;
-      case 'ArrowLeft':
-        e.preventDefault();
-        if (currentWordIndex > 1) {
-          currentWordIndex = Math.max(0, currentWordIndex - 2);
-          progress = (currentWordIndex / words.length) * 100;
-        }
-        break;
-      case 'ArrowRight':
-        e.preventDefault();
-        if (currentWordIndex < words.length) {
-          progress = ((currentWordIndex + 1) / words.length) * 100;
-          currentWordIndex++;
-        }
-        break;
-    }
-  }
+/**
+ * Handle word click from side panel
+ * @param {number} wordIndex
+ */
+function handleSidePanelWordClick(wordIndex) {
+	currentWordIndex = wordIndex + 1;
+	progress = (currentWordIndex / words.length) * 100;
+}
 
-  onMount(() => {
-    parseText();
-    window.addEventListener('keydown', handleKeydown);
+/**
+ * Handle chapter click from side panel ToC
+ * @param {number} wordIndex
+ */
+function handleChapterClick(wordIndex) {
+	currentWordIndex = wordIndex;
+	progress = (currentWordIndex / words.length) * 100;
+}
 
-    // Check for saved session
-    if (hasSession()) {
-      savedSessionInfo = getSessionSummary();
-      if (savedSessionInfo) {
-        showSavedSessionPrompt = true;
-      }
-    }
-  });
+/**
+ * Toggle side panel visibility
+ */
+function toggleSidePanel() {
+	showSidePanel = !showSidePanel;
+	showSettings = false;
+	showTextInput = false;
+	showJumpTo = false;
+}
 
-  onDestroy(() => {
-    if (intervalId) clearTimeout(intervalId);
-    if (fadeTimeoutId) clearTimeout(fadeTimeoutId);
-    window.removeEventListener('keydown', handleKeydown);
-  });
+function handleKeydown(e) {
+	if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
+
+	switch (e.code) {
+		case "Space":
+			e.preventDefault();
+			if (isPlaying) pause();
+			else if (isPaused) resume();
+			else start();
+			break;
+		case "Escape":
+			if (showJumpTo) {
+				showJumpTo = false;
+				jumpToValue = "";
+			} else if (showSidePanel) {
+				showSidePanel = false;
+			} else if (showSettings || showTextInput) {
+				showSettings = false;
+				showTextInput = false;
+			} else if (showSavedSessionPrompt) {
+				showSavedSessionPrompt = false;
+			} else if (isPlaying || isPaused) {
+				// Exit focus mode but preserve position
+				isPlaying = false;
+				isPaused = false;
+				if (intervalId) {
+					clearTimeout(intervalId);
+					intervalId = null;
+				}
+			}
+			break;
+		case "KeyG":
+			if (!isPlaying && !showSettings && !showTextInput) {
+				e.preventDefault();
+				showJumpTo = !showJumpTo;
+			}
+			break;
+		case "KeyT":
+			if (!isPlaying && !showSettings && !showTextInput && !showJumpTo) {
+				e.preventDefault();
+				toggleSidePanel();
+			}
+			break;
+		case "KeyS":
+			if (e.ctrlKey || e.metaKey) {
+				e.preventDefault();
+				saveCurrentSession();
+			}
+			break;
+		case "ArrowUp":
+			e.preventDefault();
+			wordsPerMinute = Math.min(1000, wordsPerMinute + 25);
+			break;
+		case "ArrowDown":
+			e.preventDefault();
+			wordsPerMinute = Math.max(50, wordsPerMinute - 25);
+			break;
+		case "ArrowLeft":
+			e.preventDefault();
+			if (currentWordIndex > 1) {
+				currentWordIndex = Math.max(0, currentWordIndex - 2);
+				progress = (currentWordIndex / words.length) * 100;
+			}
+			break;
+		case "ArrowRight":
+			e.preventDefault();
+			if (currentWordIndex < words.length) {
+				progress = ((currentWordIndex + 1) / words.length) * 100;
+				currentWordIndex++;
+			}
+			break;
+	}
+}
+
+onMount(() => {
+	parseText();
+	window.addEventListener("keydown", handleKeydown);
+
+	// Check for saved session
+	if (hasSession()) {
+		savedSessionInfo = getSessionSummary();
+		if (savedSessionInfo) {
+			showSavedSessionPrompt = true;
+		}
+	}
+});
+
+onDestroy(() => {
+	if (intervalId) clearTimeout(intervalId);
+	if (fadeTimeoutId) clearTimeout(fadeTimeoutId);
+	window.removeEventListener("keydown", handleKeydown);
+});
 </script>
 
 <main
@@ -425,7 +500,17 @@
       <div class="header-actions">
         <button
           class="icon-btn"
-          on:click={() => { showJumpTo = !showJumpTo; showSettings = false; showTextInput = false; }}
+          on:click={toggleSidePanel}
+          title="Toggle text panel (T)"
+          class:active={showSidePanel}
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 5h18v2H3V5zm0 4h18v2H3V9zm0 4h18v2H3v-2zm0 4h18v2H3v-2z"/>
+          </svg>
+        </button>
+        <button
+          class="icon-btn"
+          on:click={() => { showJumpTo = !showJumpTo; showSettings = false; showTextInput = false; showSidePanel = false; }}
           title="Jump to word (G)"
           class:active={showJumpTo}
         >
@@ -445,7 +530,7 @@
         </button>
         <button
           class="icon-btn"
-          on:click={() => { showTextInput = !showTextInput; showSettings = false; showJumpTo = false; }}
+          on:click={() => { showTextInput = !showTextInput; showSettings = false; showJumpTo = false; showSidePanel = false; }}
           title="Load Content"
           class:active={showTextInput}
         >
@@ -455,7 +540,7 @@
         </button>
         <button
           class="icon-btn"
-          on:click={() => { showSettings = !showSettings; showTextInput = false; showJumpTo = false; }}
+          on:click={() => { showSettings = !showSettings; showTextInput = false; showJumpTo = false; showSidePanel = false; }}
           title="Settings"
           class:active={showSettings}
         >
@@ -541,17 +626,53 @@
     </div>
   {/if}
 
-  <!-- Main Display -->
-  <div class="display-area">
-    <RSVPDisplay
-      word={currentWord}
-      wordGroup={wordFrame.subset}
-      highlightIndex={wordFrame.centerOffset}
-      opacity={wordOpacity}
-      {fadeDuration}
-      {fadeEnabled}
-      multiWordEnabled={frameWordCount > 1}
-    />
+  <!-- Main Display Area with Optional Side Panel -->
+  <div class="content-area">
+    <!-- Desktop: Side panel with CSS resize -->
+    {#if showSidePanel && !isFocusMode}
+      <div class="side-panel-container">
+        <SidePanel
+          {words}
+          {chapters}
+          {hasToC}
+          {paragraphBreaks}
+          currentWordIndex={currentWordIndex - 1}
+          onWordClick={handleSidePanelWordClick}
+          onChapterClick={handleChapterClick}
+          onClose={() => showSidePanel = false}
+          bind:this={sidePanelRef}
+        />
+      </div>
+    {/if}
+
+    <div class="display-area">
+      <RSVPDisplay
+        word={currentWord}
+        wordGroup={wordFrame.subset}
+        highlightIndex={wordFrame.centerOffset}
+        opacity={wordOpacity}
+        {fadeDuration}
+        {fadeEnabled}
+        multiWordEnabled={frameWordCount > 1}
+      />
+    </div>
+
+    <!-- Mobile: Bottom sheet overlay (shown when panel is open on mobile) -->
+    {#if showSidePanel && !isFocusMode}
+      <div class="mobile-bottom-sheet">
+        <div class="bottom-sheet-handle"></div>
+        <SidePanel
+          {words}
+          {chapters}
+          {hasToC}
+          {paragraphBreaks}
+          currentWordIndex={currentWordIndex - 1}
+          onWordClick={handleSidePanelWordClick}
+          onChapterClick={handleChapterClick}
+          onClose={() => showSidePanel = false}
+        />
+      </div>
+    {/if}
   </div>
 
   <!-- Bottom Bar -->
@@ -588,6 +709,7 @@
         <kbd>↑↓</kbd> Speed
         <kbd>←→</kbd> Skip
         <kbd>G</kbd> Jump
+        <kbd>T</kbd> Panel
         <kbd>Ctrl+S</kbd> Save
       </div>
       <div class="touch-controls mobile-only">
@@ -700,6 +822,13 @@
     padding: 2rem;
   }
 
+  .content-area {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .display-area {
     flex: 1;
     display: flex;
@@ -707,6 +836,41 @@
     justify-content: center;
     min-height: 0;
     overflow: hidden;
+  }
+
+  /* Side panel container - CSS resize */
+  .side-panel-container {
+    width: 300px;
+    min-width: 200px;
+    max-width: 50%;
+    height: 100%;
+    resize: horizontal;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  /* Mobile bottom sheet */
+  .mobile-bottom-sheet {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60%;
+    background: #0a0a0a;
+    border-top: 1px solid #333;
+    border-radius: 16px 16px 0 0;
+    z-index: 50;
+    flex-direction: column;
+  }
+
+  .bottom-sheet-handle {
+    width: 40px;
+    height: 4px;
+    background: #444;
+    border-radius: 2px;
+    margin: 8px auto;
+    flex-shrink: 0;
   }
 
   .bottom-bar {
@@ -814,6 +978,16 @@
     }
 
     .mobile-only {
+      display: flex;
+    }
+
+    /* Hide desktop side panel on mobile */
+    .side-panel-container {
+      display: none;
+    }
+
+    /* Show mobile bottom sheet on mobile */
+    .mobile-bottom-sheet {
       display: flex;
     }
   }

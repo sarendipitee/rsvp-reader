@@ -99,7 +99,9 @@ describe('parsePDF', () => {
     const result = await parseFile(file)
 
     expect(pdfjsLib.getDocument).toHaveBeenCalled()
-    expect(result).toBe('Hello World')
+    expect(result.text).toBe('Hello World')
+    expect(result.chapters).toEqual([])
+    expect(result.hasToC).toBe(false)
   })
 
   it('should handle multi-page PDFs', async () => {
@@ -133,7 +135,7 @@ describe('parsePDF', () => {
     const result = await parseFile(file)
 
     expect(mockPdf.getPage).toHaveBeenCalledTimes(2)
-    expect(result).toBe('Page One Page Two')
+    expect(result.text).toBe('Page One Page Two')
   })
 
   it('should filter out non-text items from PDF', async () => {
@@ -162,7 +164,7 @@ describe('parsePDF', () => {
 
     const result = await parseFile(file)
 
-    expect(result).toBe('Text Content')
+    expect(result.text).toBe('Text Content')
   })
 })
 
@@ -180,11 +182,15 @@ describe('parseEPUB', () => {
 
     const mockBook = {
       ready: Promise.resolve(),
-      loaded: { spine: Promise.resolve() },
+      loaded: {
+        spine: Promise.resolve(),
+        navigation: Promise.resolve()
+      },
       spine: {
         items: [mockSection],
         spineItems: [mockSection]
       },
+      navigation: { toc: [] },
       load: vi.fn().mockResolvedValue('<html><body>Chapter content here</body></html>')
     }
 
@@ -195,21 +201,32 @@ describe('parseEPUB', () => {
     const result = await parseFile(file)
 
     expect(epubjs.default).toHaveBeenCalled()
-    expect(result).toBe('Chapter content here')
+    expect(result.text).toBe('Chapter content here')
+    expect(result.chapters).toEqual([])
+    expect(result.hasToC).toBe(false)
   })
 
   it('should handle EPUB with multiple chapters', async () => {
     const epubjs = await import('epubjs')
 
-    const mockSection1 = { href: 'chapter1.xhtml' }
-    const mockSection2 = { href: 'chapter2.xhtml' }
+    const mockSection1 = { href: 'chapter1.xhtml', idref: 'ch1' }
+    const mockSection2 = { href: 'chapter2.xhtml', idref: 'ch2' }
 
     const mockBook = {
       ready: Promise.resolve(),
-      loaded: { spine: Promise.resolve() },
+      loaded: {
+        spine: Promise.resolve(),
+        navigation: Promise.resolve()
+      },
       spine: {
         items: [mockSection1, mockSection2],
         spineItems: [mockSection1, mockSection2]
+      },
+      navigation: {
+        toc: [
+          { href: 'chapter1.xhtml', label: 'Chapter One' },
+          { href: 'chapter2.xhtml', label: 'Chapter Two' }
+        ]
       },
       load: vi.fn().mockImplementation((href) => {
         if (href === 'chapter1.xhtml') return Promise.resolve('<html><body>Chapter One</body></html>')
@@ -224,7 +241,11 @@ describe('parseEPUB', () => {
 
     const result = await parseFile(file)
 
-    expect(result).toBe('Chapter One Chapter Two')
+    expect(result.text).toBe('Chapter One Chapter Two')
+    expect(result.hasToC).toBe(true)
+    expect(result.chapters).toHaveLength(2)
+    expect(result.chapters[0].title).toBe('Chapter One')
+    expect(result.chapters[1].title).toBe('Chapter Two')
   })
 
   it('should handle failed section loads gracefully', async () => {
@@ -235,11 +256,15 @@ describe('parseEPUB', () => {
 
     const mockBook = {
       ready: Promise.resolve(),
-      loaded: { spine: Promise.resolve() },
+      loaded: {
+        spine: Promise.resolve(),
+        navigation: Promise.resolve()
+      },
       spine: {
         items: [mockSection1, mockSection2],
         spineItems: [mockSection1, mockSection2]
       },
+      navigation: { toc: [] },
       load: vi.fn().mockImplementation((href) => {
         if (href === 'broken.xhtml') return Promise.reject(new Error('Failed to load'))
         if (href === 'working.xhtml') return Promise.resolve('<html><body>Working chapter</body></html>')
@@ -254,7 +279,7 @@ describe('parseEPUB', () => {
     // Should not throw, should continue with other sections
     const result = await parseFile(file)
 
-    expect(result).toBe('Working chapter')
+    expect(result.text).toBe('Working chapter')
   })
 })
 
@@ -290,8 +315,8 @@ describe('text cleaning', () => {
     const result = await parseFile(file)
 
     // Multiple spaces should be collapsed
-    expect(result).not.toContain('   ')
-    expect(result).toBe('Hello World')
+    expect(result.text).not.toContain('   ')
+    expect(result.text).toBe('Hello World')
   })
 
   it('should clean repeated punctuation', async () => {
@@ -319,6 +344,6 @@ describe('text cleaning', () => {
 
     const result = await parseFile(file)
 
-    expect(result).toBe('What? Really!')
+    expect(result.text).toBe('What? Really!')
   })
 })
